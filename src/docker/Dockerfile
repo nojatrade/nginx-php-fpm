@@ -1,5 +1,7 @@
-ARG phpVersion=8.3-dev
-FROM php:${phpVersion}-fpm
+ARG phpVersion=8.3.36
+# The Debian release is pinned: php:<version>-fpm moved from bookworm to trixie,
+# which would change nginx and every library the extensions link against.
+FROM php:${phpVersion}-fpm-bookworm
 ARG WORKDIR=/var/www/html
 ENV DOCUMENT_ROOT=${WORKDIR}
 ENV LARAVEL_PROCS_NUMBER=1
