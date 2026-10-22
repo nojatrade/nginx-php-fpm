@@ -1,7 +1,7 @@
 ARG phpVersion=8.3.36
 # The Debian release is pinned: php:<version>-fpm moved from bookworm to trixie,
 # which would change nginx and every library the extensions link against.
-FROM php:${phpVersion}-fpm-bookworm
+FROM php:${phpVersion}-fpm-bookworm AS build
 ARG WORKDIR=/var/www/html
 ENV DOCUMENT_ROOT=${WORKDIR}
 ENV LARAVEL_PROCS_NUMBER=1
@@ -122,4 +122,32 @@ RUN chown -R ${USER_NAME}:${GROUP_NAME} /var/www && \
 
 #USER ${USER_NAME}
 EXPOSE 80
+ENTRYPOINT ["entrypoint.sh"]
+
+# The image ships as one flat layer. Our servers run Docker inside incus
+# containers, where Docker cannot unpack a layer that deletes a file from the
+# layer below (a whiteout: "failed to mknod ... operation not permitted"), and
+# the official PHP image has such layers. FROM scratch keeps none of the
+# settings above, so they are repeated here. The PHP source download variables
+# (PHP_URL, PHP_SHA256, GPG_KEYS) are left out: /usr/src/php.tar.xz is already
+# in the image.
+FROM scratch
+COPY --from=build / /
+ARG phpVersion
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    PHPIZE_DEPS="autoconf dpkg-dev file g++ gcc libc-dev make pkg-config re2c" \
+    PHP_INI_DIR=/usr/local/etc/php \
+    PHP_CFLAGS="-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64" \
+    PHP_CPPFLAGS="-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64" \
+    PHP_LDFLAGS="-Wl,-O1 -pie" \
+    PHP_VERSION=${phpVersion} \
+    DOCUMENT_ROOT=/var/www/html \
+    LARAVEL_PROCS_NUMBER=1 \
+    DOMAIN=_ \
+    CLIENT_MAX_BODY_SIZE=15M \
+    NODE_VERSION=20.x \
+    USER_NAME=www-data
+WORKDIR /var/www/html
+EXPOSE 80 9000
+STOPSIGNAL SIGQUIT
 ENTRYPOINT ["entrypoint.sh"]
